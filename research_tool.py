@@ -44,7 +44,17 @@ def demo_basic_usage():
 
     # Example 3: Database stats
     print(f"\n📊 Database Statistics:")
-    stats = server.paper_info_tool.get_database_stats()
+    try:
+        stats = server.paper_info_tool.get_database_stats()
+    except AttributeError:
+        # Fallback implementation
+        topics = server.paper_info_tool.file_handler.list_all_topics()
+        total_papers = 0
+        for topic in topics:
+            topic_stats = server.paper_info_tool.file_handler.get_topic_stats(topic)
+            total_papers += topic_stats["paper_count"]
+        stats = {"total_topics": len(topics), "total_papers": total_papers}
+
     print(f"   Total topics: {stats.get('total_topics', 0)}")
     print(f"   Total papers: {stats.get('total_papers', 0)}")
 
@@ -117,7 +127,19 @@ def interactive_research_tool():
 
             elif cmd == "stats":
                 print("📊 Database Statistics:")
-                stats = server.paper_info_tool.get_database_stats()
+                try:
+                    stats = server.paper_info_tool.get_database_stats()
+                except AttributeError:
+                    # Fallback implementation
+                    topics = server.paper_info_tool.file_handler.list_all_topics()
+                    total_papers = 0
+                    topic_stats = []
+                    for topic in topics:
+                        topic_stat = server.paper_info_tool.file_handler.get_topic_stats(topic)
+                        topic_stats.append(topic_stat)
+                        total_papers += topic_stat["paper_count"]
+                    stats = {"total_topics": len(topics), "total_papers": total_papers, "topics": topic_stats}
+
                 print(f"   📁 Total topics: {stats.get('total_topics', 0)}")
                 print(f"   📄 Total papers: {stats.get('total_papers', 0)}")
 
@@ -146,7 +168,19 @@ def interactive_research_tool():
                     continue
 
                 print(f"📤 Exporting {paper_id} as {format_type}...")
-                result = server.paper_info_tool.export_paper_data(paper_id, format_type)
+                try:
+                    result = server.paper_info_tool.export_paper_data(paper_id, format_type)
+                except AttributeError:
+                    # Fallback: just get the paper info and format it
+                    info_result = server.paper_info_tool.extract_info(paper_id)
+                    data = json.loads(info_result)
+                    if "error" not in data:
+                        if format_type == "json":
+                            result = json.dumps(data, indent=2)
+                        else:
+                            result = f"Title: {data.get('title', 'N/A')}\nAuthors: {', '.join(data.get('authors', []))}\nPaper ID: {paper_id}"
+                    else:
+                        result = None
 
                 if result:
                     print("✅ Export result:")
@@ -202,7 +236,17 @@ def batch_research_example():
 
     # Final stats
     print(f"\n📊 Research Summary:")
-    stats = server.paper_info_tool.get_database_stats()
+    try:
+        stats = server.paper_info_tool.get_database_stats()
+    except AttributeError:
+        # Fallback implementation
+        topics = server.paper_info_tool.file_handler.list_all_topics()
+        total_papers = 0
+        for topic in topics:
+            topic_stats = server.paper_info_tool.file_handler.get_topic_stats(topic)
+            total_papers += topic_stats["paper_count"]
+        stats = {"total_topics": len(topics), "total_papers": total_papers}
+
     print(f"   📁 Total topics in database: {stats.get('total_topics', 0)}")
     print(f"   📄 Total papers collected: {stats.get('total_papers', 0)}")
 
@@ -213,7 +257,18 @@ def create_research_report():
     print("=" * 40)
 
     server = MCPResearchServer()
-    stats = server.paper_info_tool.get_database_stats()
+    try:
+        stats = server.paper_info_tool.get_database_stats()
+    except AttributeError:
+        # Fallback implementation
+        topics = server.paper_info_tool.file_handler.list_all_topics()
+        total_papers = 0
+        topic_stats = []
+        for topic in topics:
+            topic_stat = server.paper_info_tool.file_handler.get_topic_stats(topic)
+            topic_stats.append(topic_stat)
+            total_papers += topic_stat["paper_count"]
+        stats = {"total_topics": len(topics), "total_papers": total_papers, "topics": topic_stats}
 
     report = f"""
 RESEARCH DATABASE REPORT
