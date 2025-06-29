@@ -1,14 +1,55 @@
 #!/usr/bin/env python3
-"""Simple web interface for testing MCP Research Server."""
+"""Simple web interface for testing MCP Research Server with auto-reload capability."""
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import urllib.parse
 import traceback
-from mcp_research_server.server import MCPResearchServer
+import importlib
+import sys
 
 
 class MCPTestHandler(BaseHTTPRequestHandler):
+    def reload_modules(self):
+        """Reload MCP server modules to pick up changes."""
+        try:
+            # List of modules to reload
+            modules_to_reload = [
+                'mcp_research_server.server',
+                'mcp_research_server.tools.arxiv_search',
+                'mcp_research_server.tools.paper_info',
+                'mcp_research_server.models',
+                'mcp_research_server.config',
+                'mcp_research_server.utils.file_handler',
+                'mcp_research_server.utils.logger'
+            ]
+
+            # Reload each module if it's already imported
+            for module_name in modules_to_reload:
+                if module_name in sys.modules:
+                    importlib.reload(sys.modules[module_name])
+                    print(f"🔄 Reloaded: {module_name}")
+
+            return True
+        except Exception as e:
+            print(f"❌ Reload failed: {e}")
+            return False
+
+    def get_fresh_server(self):
+        """Get a fresh server instance with reloaded modules."""
+        try:
+            # Reload modules first
+            self.reload_modules()
+
+            # Import fresh server
+            from mcp_research_server.server import MCPResearchServer
+            return MCPResearchServer()
+        except Exception as e:
+            print(f"❌ Failed to create fresh server: {e}")
+            # Fall back to cached version
+            from mcp_research_server.server import MCPResearchServer
+            return MCPResearchServer()
+
     def get_base_html(self, results_content=""):
         """Get the complete HTML page with optional results."""
         return f"""
@@ -31,13 +72,26 @@ class MCPTestHandler(BaseHTTPRequestHandler):
                 .status {{ text-align: center; padding: 10px; background: #d4edda; border-radius: 5px; margin-bottom: 20px; }}
                 .use-id-btn {{ background: #28a745; margin-left: 10px; padding: 5px 10px; font-size: 12px; }}
                 .use-id-btn:hover {{ background: #218838; }}
+                .reload-btn {{ background: #ffc107; color: #212529; margin-left: 10px; }}
+                .reload-btn:hover {{ background: #e0a800; }}
+                .dev-section {{ background: #e3f2fd; border-left: 4px solid #2196f3; margin-bottom: 20px; }}
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🔬 MCP Research Server Test Interface</h1>
                 <div class="status">✅ Your MCP Server is running correctly!</div>
-                <p style="text-align: center; color: #666;">Test your MCP server functionality without the MCP Inspector</p>
+
+                <div class="tool-section dev-section">
+                    <h3>🔄 Development Tools</h3>
+                    <p>Auto-reload is enabled - code changes are automatically picked up!</p>
+                    <form action="/reload" method="post" style="display: inline;">
+                        <button type="submit" class="reload-btn">🔄 Manual Reload</button>
+                    </form>
+                    <small>💡 Use manual reload if you're experiencing caching issues</small>
+                </div>
+
+                <p style="text-align: center; color: #666;">Test your MCP server functionality - modules auto-reload on each request!</p>
 
                 <div class="tool-section">
                     <h3>🔍 Search Papers</h3>
@@ -128,9 +182,36 @@ class MCPTestHandler(BaseHTTPRequestHandler):
         post_data = self.rfile.read(content_length)
 
         try:
-            server = MCPResearchServer()
+            # Get fresh server instance with reloaded modules
+            server = self.get_fresh_server()
 
-            if self.path == '/search':
+            if self.path == '/reload':
+                # Manual reload endpoint
+                success = self.reload_modules()
+                if success:
+                    results_html = """
+                    <div class="result">
+                        <h3>✅ Modules Reloaded Successfully</h3>
+                        <p>All MCP server modules have been reloaded. Any code changes should now be active.</p>
+                        <p><small>🔄 Auto-reload is always active, but manual reload can help with stubborn caching issues.</small></p>
+                    </div>
+                    """
+                else:
+                    results_html = """
+                    <div class="result error">
+                        <h3>❌ Reload Failed</h3>
+                        <p>There was an error reloading modules. Check the console for details.</p>
+                    </div>
+                    """
+
+                complete_html = self.get_base_html(results_html)
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(complete_html.encode())
+                return
+
+            elif self.path == '/search':
                 data = urllib.parse.parse_qs(post_data.decode())
                 topic = data.get('topic', [''])[0]
                 max_results = int(data.get('max_results', ['5'])[0])
@@ -225,8 +306,30 @@ class MCPTestHandler(BaseHTTPRequestHandler):
 
             elif self.path == '/stats':
                 print("📊 Getting database statistics")
-                result = server.paper_info_tool.get_database_stats()
-                stats_data = json.loads(result) if isinstance(result, str) else result
+
+                # Try the method first
+                try:
+                    result = server.paper_info_tool.get_database_stats()
+                    stats_data = result
+                    print("✅ Using get_database_stats method")
+                except AttributeError:
+                    print("⚠️ Method not found, using fallback implementation")
+                    # Fallback implementation
+                    topics = server.paper_info_tool.file_handler.list_all_topics()
+                    total_papers = 0
+                    topic_stats = []
+
+                    for topic in topics:
+                        stats = server.paper_info_tool.file_handler.get_topic_stats(topic)
+                        topic_stats.append(stats)
+                        total_papers += stats["paper_count"]
+
+                    stats_data = {
+                        "total_topics": len(topics),
+                        "total_papers": total_papers,
+                        "topics": topic_stats,
+                        "generated_at": "fallback_implementation"
+                    }
 
                 results_html = f"""
                 <div class="result">
@@ -285,7 +388,7 @@ class MCPTestHandler(BaseHTTPRequestHandler):
                     <summary style="cursor: pointer; font-weight: bold;">🔍 Technical Details</summary>
                     <pre style="background: #f1f3f4; padding: 15px; border-radius: 5px; margin-top: 10px;">{traceback.format_exc()}</pre>
                 </details>
-                <p><small>💡 Try refreshing the page and trying again</small></p>
+                <p><small>💡 Try the manual reload button or refresh the page and try again</small></p>
             </div>
             """
 
@@ -312,16 +415,19 @@ def run_test_server(port=8000):
     server_address = ('', port)
     httpd = HTTPServer(server_address, MCPTestHandler)
 
-    print("🌐 MCP Research Server Test Interface")
-    print("=" * 50)
+    print("🌐 MCP Research Server Test Interface with Auto-Reload")
+    print("=" * 60)
     print(f"🚀 Server running at: http://localhost:{port}")
     print(f"🔗 Open this URL in your browser to test your MCP server")
+    print("🔄 Auto-reload enabled - code changes picked up automatically!")
     print("📊 Available features:")
     print("   • Search ArXiv papers by topic")
     print("   • Get detailed paper information")
     print("   • View database statistics")
+    print("   • Auto-reload modules on each request")
+    print("   • Manual reload button for stubborn cache issues")
     print("⏹️  Press Ctrl+C to stop the server")
-    print("=" * 50)
+    print("=" * 60)
 
     try:
         httpd.serve_forever()
