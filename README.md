@@ -1,6 +1,11 @@
 # MCP Research Server
 
-A production-ready Model Context Protocol (MCP) server for ArXiv paper research.
+A near production-ready Model Context Protocol (MCP) server for ArXiv paper research.
+
+This repo is motivated by, and heavily dependent on the
+[MCP: Build Rich-Context AI Apps with Anthropic](https://www.deeplearning.ai/short-courses/mcp-build-rich-context-ai-apps-with-anthropic/) 
+short DeepLearning.AI course. It is an attempt to have a modularized version of the chatbot and with production-ready
+code.
 
 ## Quick Start
 
